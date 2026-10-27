@@ -63,7 +63,7 @@ function showHome() {
         <p class="est">${ARTISTS.length - 1} picks, fewer if you skip artists you don't know.</p>
         <div class="more">
           ${resumable ? `<button class="link" id="resume">Continue ${esc(run.name)}'s game</button>` : ''}
-          ${data.players.length ? `<button class="link" id="squad">Squad chart (${data.players.length})</button>` : ''}
+          ${data.players.length ? `<button class="link" id="squad">Who everyone got (${data.players.length})</button>` : ''}
         </div>
       </div>
     </div>
@@ -176,35 +176,31 @@ function showResults() {
       ${rest.length ? `<ol class="list">${rest.map((i, r) => row(i, r + 2)).join('')}</ol>` : ''}
       <div class="actions">
         <button class="go" id="next">Next player</button>
-        <button class="link" id="squad">Squad chart (${data.players.length})</button>
+        <button class="link" id="squad">Who everyone got (${data.players.length})</button>
       </div>
     </div>
   </section>`;
   window.scrollTo(0, 0);
 }
 
-// ---------- squad chart ----------
+// ---------- who everyone got ----------
 
 function showSquad() {
   stop();
   clearArmed = false;
-  const chart = squadChart(data.players).slice(0, 10);
-  const n = data.players.length;
+  const players = data.players.slice().sort((a, b) => b.at - a.at);
   app.innerHTML = `
   <section class="squad">
     <div class="half top">
       <button class="back" id="home">&lsaquo; Back</button>
-      <h2>Squad chart</h2>
-      <p>${n} ${n === 1 ? 'player' : 'players'} so far. A number one is worth 5 points, a number five is worth 1.</p>
+      <h2>Who everyone got</h2>
     </div>
     <div class="half bot">
-      ${chart.length ? `<ol class="list">${chart.map((s, r) =>
-        row(s.id, r + 1, `<small>${s.pts} ${s.pts === 1 ? 'pt' : 'pts'}, ${esc(s.fans.join(', '))}</small>`)).join('')}</ol>` :
+      ${players.length ? `<ul class="list">${players.map(p => `
+        <li>${photo(p.top[0])}<div class="tx"><b>${esc(p.name)}</b>
+          <span class="got">${esc(ARTISTS[p.top[0]].name)}</span></div></li>`).join('')}</ul>` :
         '<p class="empty">Nobody has finished a game yet.</p>'}
-      ${n ? `<div><h3>Everyone's top 5</h3><div class="players">${data.players.map(p => `
-        <div class="player"><b>${esc(p.name)}</b><div class="mini">${p.top.slice(0, 5).map(photo).join('')}</div></div>`).join('')}
-      </div></div>` : ''}
-      ${n ? '<button class="link clear" id="clear">Clear the squad</button>' : ''}
+      ${players.length ? '<button class="link clear" id="clear">Clear the list</button>' : ''}
     </div>
   </section>`;
   window.scrollTo(0, 0);

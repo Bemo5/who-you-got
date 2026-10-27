@@ -82,20 +82,6 @@ function save(data) {
   try { localStorage.setItem(STORE, JSON.stringify(data)); } catch {}
 }
 
-// Points for the squad chart: #1 gets 5, #5 gets 1.
-function squadChart(players) {
-  const score = new Map();
-  for (const p of players) {
-    p.top.slice(0, 5).forEach((id, r) => {
-      const s = score.get(id) || { id, pts: 0, fans: [] };
-      s.pts += 5 - r;
-      s.fans.push(p.name);
-      score.set(id, s);
-    });
-  }
-  return [...score.values()].sort((a, b) => b.pts - a.pts || b.fans.length - a.fans.length);
-}
-
 // ---- song previews (Deezer 30s clips, fetched fresh because the links expire) ----
 
 const audio = new Audio();
