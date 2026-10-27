@@ -1,57 +1,37 @@
-// Ranking engine, storage and song previews. No DOM here except the audio element.
+// Knockout engine, storage and song previews. No DOM here except the audio element.
 
-// How the picks are chosen:
-// An artist is a "contender" while everyone who has beaten them is already ranked.
-// Two contenders have never met (if they had, the loser would not be a contender),
-// so any two of them make a fair matchup, and each pick knocks exactly one out.
-// When one contender is left, they take the next rank. Pairing the contenders with
-// the fewest wins first keeps it bracket-shaped, so finding #2, #3... only replays
-// the handful of artists who lost to the people already ranked.
+// Whoever you don't pick is out for good. Artists with the fewest wins meet first,
+// so it plays like a bracket: winners face winners and the last one standing is #1.
+// Everyone else is ranked by how far they got (wins), then by how late they went out.
 
-function newRun(name, pools, want = 5) {
-  const ids = ARTISTS.map((a, i) => i).filter(i => pools.includes(ARTISTS[i].pool));
+function newRun(name) {
+  const ids = ARTISTS.map((a, i) => i);
   for (let i = ids.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [ids[i], ids[j]] = [ids[j], ids[i]];
   }
-  return { name, pools, want, order: ids, ranked: [], gone: [], beats: [], picks: 0, history: [] };
+  return { name, order: ids, wins: {}, out: [], gone: [], picks: 0, history: [] };
 }
 
-function active(run) {
-  return run.order.filter(i => !run.ranked.includes(i) && !run.gone.includes(i));
+function alive(run) {
+  return run.order.filter(i => !run.out.includes(i) && !run.gone.includes(i));
 }
 
-function contenders(run) {
-  return active(run).filter(i =>
-    run.beats.every(([w, l]) => l !== i || run.ranked.includes(w) || run.gone.includes(w)));
-}
-
-function winsOver(run, i) {
-  const live = new Set(active(run));
-  return run.beats.filter(([w, l]) => w === i && live.has(l)).length;
-}
-
-// Ranks everyone who is the last contender standing.
-function settle(run) {
-  while (run.ranked.length < run.want) {
-    const c = contenders(run);
-    if (c.length !== 1) break;
-    run.ranked.push(c[0]);
-  }
+function wins(run, i) {
+  return run.wins[i] || 0;
 }
 
 function isDone(run) {
-  return run.ranked.length >= run.want || active(run).length === 0;
+  return alive(run).length <= 1;
 }
 
-// The next two artists to show, or null when the run is finished.
+// The next two artists to show, or null when the knockout is over.
 function nextPair(run) {
-  if (isDone(run)) return null;
-  const c = contenders(run);
-  if (c.length < 2) return null;
+  const left = alive(run);
+  if (left.length < 2) return null;
   const pos = i => run.order.indexOf(i);
-  c.sort((a, b) => winsOver(run, a) - winsOver(run, b) || pos(a) - pos(b));
-  return [c[0], c[1]];
+  left.sort((a, b) => wins(run, a) - wins(run, b) || pos(a) - pos(b));
+  return [left[0], left[1]];
 }
 
 function snapshot(run) {
@@ -61,16 +41,15 @@ function snapshot(run) {
 
 function pick(run, winner, loser) {
   run.history.push(snapshot(run));
-  run.beats.push([winner, loser]);
+  run.wins[winner] = wins(run, winner) + 1;
+  run.out.push(loser);
   run.picks++;
-  settle(run);
 }
 
 function dontKnow(run, i) {
   run.history.push(snapshot(run));
   run.gone.push(i);
   run.picks++;
-  settle(run);
 }
 
 function undo(run) {
@@ -81,27 +60,20 @@ function undo(run) {
   return true;
 }
 
-function keepGoing(run, more = 5) {
-  run.want += more;
-  settle(run);
+// Champion first, then everyone knocked out: more wins first, later exits first.
+function ranking(run) {
+  const outAt = i => run.out.indexOf(i);
+  const knocked = run.out.slice().sort((a, b) => wins(run, b) - wins(run, a) || outAt(b) - outAt(a));
+  return [...alive(run), ...knocked];
 }
 
-// Rough picks left: finish the current knockout, then about log2(n) per rank still wanted.
 function picksLeft(run) {
-  if (isDone(run)) return 0;
-  const n = active(run).length;
-  const later = Math.max(0, run.want - run.ranked.length - 1);
-  return contenders(run).length - 1 + later * Math.ceil(Math.log2(Math.max(2, n)));
-}
-
-function estimateFor(pools) {
-  const n = ARTISTS.filter(a => pools.includes(a.pool)).length;
-  return n ? n - 1 + 4 * Math.ceil(Math.log2(Math.max(2, n))) : 0;
+  return Math.max(0, alive(run).length - 1);
 }
 
 // ---- storage (this phone only) ----
 
-const STORE = 'wyg.v1';
+const STORE = 'wyg.v2';
 function load() {
   try { return JSON.parse(localStorage.getItem(STORE)) || { players: [], run: null }; }
   catch { return { players: [], run: null }; }
@@ -134,10 +106,11 @@ function jsonp(url, timeout = 8000) {
   return new Promise((resolve, reject) => {
     const cb = 'dz' + Math.random().toString(36).slice(2);
     const s = document.createElement('script');
-    const t = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, timeout);
-    function cleanup() { clearTimeout(t); delete window[cb]; s.remove(); }
-    window[cb] = data => { cleanup(); resolve(data); };
-    s.onerror = () => { cleanup(); reject(new Error('load')); };
+    const done = () => { clearTimeout(t); s.remove(); };
+    // A reply that shows up after the timeout still calls cb, so leave a no-op behind.
+    const t = setTimeout(() => { window[cb] = () => delete window[cb]; done(); reject(new Error('timeout')); }, timeout);
+    window[cb] = data => { delete window[cb]; done(); resolve(data); };
+    s.onerror = () => { delete window[cb]; done(); reject(new Error('load')); };
     s.src = url + (url.includes('?') ? '&' : '?') + 'output=jsonp&callback=' + cb;
     document.head.appendChild(s);
   });

@@ -1,7 +1,6 @@
 // Screens: home, duel, results, squad chart. State lives in engine.js; this file only draws it.
 
 const app = document.getElementById('app');
-const POOLS = [['rap', 'Rap'], ['house', 'House'], ['arab', 'Arab rap']];
 
 let data = load();
 data.players = data.players || [];
@@ -45,40 +44,23 @@ function stop() {
 
 // ---------- home ----------
 
-function chosenPools() {
-  return [...app.querySelectorAll('.pool.on')].map(b => b.dataset.pool);
-}
-
-function updateEstimate() {
-  const pools = chosenPools();
-  app.querySelector('#start').disabled = !pools.length;
-  app.querySelector('#est').textContent = pools.length
-    ? `About ${estimateFor(pools)} picks, fewer if you skip artists you don't know.`
-    : 'Pick at least one.';
-}
-
 function showHome() {
   stop();
-  const pools = data.lastPools || ['rap'];
   const resumable = run && !isDone(run);
+  const rap = ARTISTS.filter(a => a.pool === 'rap').length;
   app.innerHTML = `
   <section class="home">
     <div class="half top">
       <h1>Who You<br>Got?</h1>
-      <p class="lede">Two artists at a time. Keep picking until your top 5 shows up.</p>
+      <p class="lede">Two artists at a time. The one you don't pick is out. Last one standing is your number one.</p>
     </div>
     <div class="half bot">
       <label class="field"><span>Who's playing?</span>
         <input id="name" maxlength="20" autocomplete="off" placeholder="Your name"></label>
-      <div class="field"><span>What do you listen to?</span>
-        <div class="pools">${POOLS.map(([k, label]) => `
-          <button class="pool${pools.includes(k) ? ' on' : ''}" data-pool="${k}">${label}
-            <small>${ARTISTS.filter(a => a.pool === k).length} artists</small></button>`).join('')}
-        </div>
-      </div>
+      <p class="mix">${rap} rappers and ${ARTISTS.length - rap} house artists, all mixed together.</p>
       <div class="start">
         <button class="go" id="start">Start</button>
-        <p class="est" id="est"></p>
+        <p class="est">${ARTISTS.length - 1} picks, fewer if you skip artists you don't know.</p>
         <div class="more">
           ${resumable ? `<button class="link" id="resume">Continue ${esc(run.name)}'s game</button>` : ''}
           ${data.players.length ? `<button class="link" id="squad">Squad chart (${data.players.length})</button>` : ''}
@@ -86,16 +68,12 @@ function showHome() {
       </div>
     </div>
   </section>`;
-  updateEstimate();
 }
 
 function start() {
-  const pools = chosenPools();
-  if (!pools.length) return;
   const typed = app.querySelector('#name').value.trim();
   const name = typed || `Player ${data.players.length + 1}`;
-  data.lastPools = pools;
-  run = newRun(name, pools);
+  run = newRun(name);
   for (const i of run.order) new Image().src = ARTISTS[i].img;
   persist();
   showDuel();
@@ -118,14 +96,14 @@ function showDuel() {
   stop();
   const pair = nextPair(run);
   if (!pair) return finish();
-  const left = picksLeft(run);
-  const total = run.picks + left;
+  const left = alive(run).length;
+  const total = run.picks + picksLeft(run);
   app.innerHTML = `
   <section class="duel">
     <div class="prog" style="width:${(run.picks / total * 100).toFixed(1)}%"></div>
     <div class="bar">
       <button id="undo"${run.history.length ? '' : ' disabled'}>&lsaquo; Undo</button>
-      <span>${run.picks + 1} of about ${total}</span>
+      <span>${left === 2 ? 'Final' : `${left} left`}</span>
       <button id="quit">Quit</button>
     </div>
     ${side(pair[0], pair[1], 'top')}
@@ -159,8 +137,9 @@ function skip(i) {
 }
 
 function finish() {
-  if (run.ranked.length) {
-    const entry = { name: run.name, pools: run.pools, top: run.ranked.slice(), at: Date.now() };
+  const top = ranking(run).slice(0, 5);
+  if (top.length) {
+    const entry = { name: run.name, top, at: Date.now() };
     const at = data.players.findIndex(p => p.name.toLowerCase() === run.name.toLowerCase());
     if (at >= 0) data.players[at] = entry; else data.players.push(entry);
   }
@@ -177,8 +156,7 @@ function row(i, rank, extra) {
 
 function showResults() {
   stop();
-  const [first, ...rest] = run.ranked;
-  const canGoOn = active(run).length > 0;
+  const [first, ...rest] = ranking(run).slice(0, 5);
   app.innerHTML = first === undefined ? `
   <section class="results">
     <div class="half top champ"><p class="who">${esc(run.name)}</p><div class="nm m">Nobody left</div></div>
@@ -198,7 +176,6 @@ function showResults() {
       ${rest.length ? `<ol class="list">${rest.map((i, r) => row(i, r + 2)).join('')}</ol>` : ''}
       <div class="actions">
         <button class="go" id="next">Next player</button>
-        ${canGoOn ? `<button class="ghost" id="more">Keep going to top ${run.want + 5}</button>` : ''}
         <button class="link" id="squad">Squad chart (${data.players.length})</button>
       </div>
     </div>
@@ -252,7 +229,6 @@ app.addEventListener('click', e => {
   let b;
   if ((b = el('[data-play]'))) return togglePreview(+b.dataset.play, playState);
   if ((b = el('[data-gone]'))) return skip(+b.dataset.gone);
-  if ((b = el('.pool'))) { b.classList.toggle('on'); return updateEstimate(); }
   if ((b = el('button'))) {
     switch (b.id) {
       case 'start': return start();
@@ -260,7 +236,6 @@ app.addEventListener('click', e => {
       case 'undo': if (!busy && undo(run)) { persist(); showDuel(); } return;
       case 'quit': case 'home': return showHome();
       case 'next': run = null; persist(); return showHome();
-      case 'more': keepGoing(run); persist(); return showDuel();
       case 'squad': return showSquad();
       case 'clear': return clearSquad(b);
     }

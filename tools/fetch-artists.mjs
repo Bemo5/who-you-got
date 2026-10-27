@@ -13,8 +13,6 @@ const POOLS = {
     'Fred again..', 'Calvin Harris', 'David Guetta', 'Swedish House Mafia', 'Disclosure', 'Kaytranada',
     'Mochakk', 'Chris Stussy', 'Keinemusik', 'Black Coffee', 'Adam Port', 'Anyma', 'Solomun',
     'MEDUZA', 'James Hype', 'Tiësto', 'HUGEL'],
-  arab: ['Wegz', 'Marwan Pablo', 'Abyusif', 'Marwan Moussa', 'Afroto', 'Lege-Cy', 'Ali Loka',
-    'Shahyn', 'Ziad Zaza', 'Mousv', 'Abo El Anwar', 'El Joker', 'Saint Levant', 'ElGrande Toto'],
 };
 
 // Exact Deezer ids for names that search can't settle on its own.
